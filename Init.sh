@@ -9,6 +9,6 @@ pip3 install esphome
 
 fi
 
-
+source ./venv/bin/activate
 
 
