@@ -17,8 +17,6 @@ A simple and lightweight project using **ESPHome** and **Home Assistant** to tur
 - Capacitive touch support  
 - USB-C power  
 
-This board from :contentReference[oaicite:1]{index=1} offers a compact and cost-effective solution for embedded UI projects.
-
 ---
 
 ## 🧰 Software Stack
