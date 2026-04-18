@@ -23,22 +23,5 @@ This board from :contentReference[oaicite:1]{index=1} offers a compact and cost-
 
 ## 🧰 Software Stack
 
-- :contentReference[oaicite:2]{index=2}  
-- :contentReference[oaicite:3]{index=3}  
-- LVGL (Light and Versatile Graphics Library)  
-- Python (`esptool.py` for flashing)  
-
----
-
-## 🚀 Features
-
-- Display current time from Home Assistant  
-- Show weather state (sunny, cloudy, rain, etc.)  
-- Image/icon switching based on conditions  
-- Smooth UI with LVGL  
-- Fully configurable via YAML  
-
----
-
-## 📁 Project Structure
-
+- update secrets.yaml
+- esphome run roundc3.yaml 
