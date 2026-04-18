@@ -1,0 +1,24 @@
+    - file: png/24a.png
+      id: day_sun_png
+    - file: png/22a.png
+      id: day_partial_png
+    - file: png/23a.png
+      id: day_cloudy_png
+    - file: png/8.png
+      id: day_rainy_png
+    - file: png/background.png
+      id: background
+    - file: png/snowy-rainy.png
+      id: snow_rainy_png
+    - file: png/snowy.png
+      id: snowy_png
+    - file: png/clear-night.png
+      id: clear_night_png
+    - file: png/fog.png
+      id: fog_png
+    - file: png/hail.png
+      id: hail_png
+    - file: png/lightning.png
+      id: lightning_png
+    - file: png/windy.png
+      id: windy_png

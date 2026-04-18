@@ -1,0 +1,680 @@
+esphome:
+  name: roundc3
+  friendly_name: roundc3
+  platformio_options:
+    board_build.f_flash: 40000000L
+    board_build.flash_mode: dio
+    board_build.flash_size: 4MB
+                
+#
+# https://community.home-assistant.io/t/getting-esphome-to-work-with-an-esp32-c3-board/450923/16
+# Example of ESP32-C3 setup
+#
+#
+esp32:
+  board: esp32-c3-devkitm-1
+  framework:
+    type: esp-idf
+
+# Enable logging
+logger:
+
+http_request:
+
+
+image:
+  defaults:
+    type: rgb565
+    #resize: 200x162
+    transparency: alpha_channel  
+  images: !include images.yaml
+#    - file: 24a.png
+#      id: day_sun_png
+#    - file: 22a.png
+#      id: day_partial_png
+#    - file: 23a.png
+#      id: day_cloudy_png
+#    - file: 8.png
+#      id: day_rainy_png
+#    - file: meteo.png
+#      id: background
+#
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: !secret key
+
+ota:
+  - platform: esphome
+    password: updateme
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: roundc3_ap_ssid
+    password: 012345678
+
+# Enable web server
+web_server:
+  port: 80
+  # auth:
+  #   username: !secret central_ws_user
+  #   password: sp!secret central_ws_password
+
+captive_portal:
+
+#
+# https://community.home-assistant.io/t/2424s012-round-display-lvgl/868243
+# Example of LVGL setup
+#
+
+substitutions:
+  devicename: round-display
+  friendname: Round Display
+  mediaplayer: media_player.owntone_server # Replace with a suitable media player entity you want to control
+  weather: sensor.weather # Replace with a suitable weather entity from your home assistant
+  screensaver: 5 min # Timeout for how long the screen should stay on after the last interaction
+  sdapin: GPIO4
+  sclpin: GPIO5
+  tint: GPIO0
+  tres: GPIO1
+  dcpin: GPIO2
+  bkpin: GPIO3
+  clpin: GPIO6
+  mopin: GPIO7
+  cspin: GPIO10
+
+
+script:
+  - id: screentime
+    mode: restart
+    then:
+      - light.turn_on: back_light
+      - delay: $screensaver
+      - light.turn_off: back_light
+  - id: screenoff
+    then:
+      - script.stop: screentime
+      - light.turn_off: back_light
+
+output:
+  - platform: ledc
+    pin: $bkpin
+    id: gpio_3_backlight_pwm
+
+light:
+  - platform: monochromatic
+    output: gpio_3_backlight_pwm
+    name: "Display Backlight"
+    id: back_light
+    restore_mode: ALWAYS_OFF
+    on_turn_off: 
+      then:
+        - lvgl.pause:
+            show_snow: true
+    on_turn_on: 
+      then:
+        - lvgl.resume:
+
+spi:
+  mosi_pin: $mopin
+  clk_pin: $clpin
+
+i2c:
+  sda: $sdapin
+  scl: $sclpin
+  scan: true
+  id: ic_bus
+
+display:
+  - platform: ili9xxx
+    model: GC9A01A
+    id: watchface
+    reset_pin: $tres
+    cs_pin: $cspin
+    dc_pin: 
+      number: $dcpin
+      ignore_strapping_warning: true
+    invert_colors: True
+    color_order: BGR
+
+touchscreen:
+  - platform: cst816
+    id: touch
+    interrupt_pin: $tint
+    on_touch:
+      then:
+        - lambda: |-
+           if (touch.x>200) {
+             id(mainscreen).show_next_page(LV_SCR_LOAD_ANIM_MOVE_LEFT, 100);
+           };
+           if (touch.x<40) {
+             id(mainscreen).show_prev_page(LV_SCR_LOAD_ANIM_MOVE_RIGHT, 100);
+           };
+
+
+    on_update:
+      - script.execute: screentime
+      - lambda: |-
+            for (auto touch: touches)  {
+                if (touch.state <= 2) {
+                  ESP_LOGI("Touch points:", "id=%d x=%d, y=%d", touch.id, touch.x, touch.y);
+                }
+            }
+
+###########################################################
+
+
+font:
+  - file: "gfonts://Saira Stencil"
+    id: roboto40
+    size: 40
+    glyphsets:
+      - GF_Latin_Kernel
+  - file: "gfonts://Roboto"
+    id: roboto28
+    size: 28
+    glyphsets:
+      - GF_Latin_Kernel
+
+  - file: "ttf/materialdesignicons-webfont.ttf"
+    id: mdi
+    size: 42
+    bpp: 4
+    glyphs: [
+          "\U000F02D1", # mdi-heart
+          "\U000F05D4", # mdi-airplane-landing
+          "\U000F005D", 
+          "\U000F1A52",
+          ]
+
+time:
+  - platform: homeassistant
+    id: homeassistant_time
+    timezone: America/Toronto
+# Update the clock hands every second
+    on_time:
+      - seconds: /1
+        then:
+          - lvgl.arc.update:
+              id: second_hand_indic2
+              value: !lambda return id(homeassistant_time).now().second;
+
+          - lvgl.label.update:
+              id: date2_widget
+              text: !lambda |
+                 return id(homeassistant_time).now().strftime("%H:%M");
+
+          - lvgl.indicator.update:
+              id: second_hand_indic
+              value: !lambda return id(homeassistant_time).now().second;
+          - lvgl.indicator.update:
+              id: minute_hand_indic
+              value: !lambda return id(homeassistant_time).now().minute;
+          - lvgl.arc.update:
+              id: minute_hand_indic2
+              value: !lambda return id(homeassistant_time).now().minute;
+          - lvgl.indicator.update:
+              id: hour_hand_indic
+              value: !lambda |-
+                float hr = (id(homeassistant_time).now().hour % 12) * 5.0;
+                float nudge = (id(homeassistant_time).now().minute / 12);
+                hr = hr + nudge;
+                if (hr == 60.0) {
+                  hr = 0.0;
+                }
+                return hr;
+          - lvgl.arc.update:
+               id: hour_hand_indic2
+               value: !lambda |-
+                float hr = (id(homeassistant_time).now().hour % 12) * 5.0;
+                float nudge = (id(homeassistant_time).now().minute / 12);
+                hr = hr + nudge;
+                if (hr == 60.0) {
+                  hr = 0.0;
+                }
+                return hr;
+
+
+# https://community.home-assistant.io/t/how-to-get-the-time-in-an-esphome-configuration/702106/3
+
+sensor:
+   - platform: uptime
+     type: seconds
+     name: Uptime Sensor
+   - platform: homeassistant
+     entity_id: weather.forecast_maison
+     attribute: temperature
+     id: ausec
+     name: "Current Temp"
+     on_value:
+       then:
+         - lvgl.label.update:
+             id: temp_display
+             text:
+               format: "%.1f"
+               args: [ id(ausec).state ]
+
+         - lvgl.label.update:
+             id: condition
+             text: !lambda |-
+               return id(meteo).state+str_sprintf("\n%.1f°C",id(ausec).state) ;
+
+         - lambda: |
+               ESP_LOGI("Check sensor", "%.1f", id(ausec).state);
+
+   - platform: template
+     name: "Current Temp"
+     id: current_temp
+     update_interval: 60s
+     unit_of_measurement: "°C"
+     device_class: "temperature"
+     state_class: "measurement"
+     icon: "mdi:thermometer"
+     accuracy_decimals: 2
+     lambda: return id(ausec).state;
+     on_value:
+        then:
+           - lambda: |
+              ESP_LOGI("get temp","%.1f °C",id(ausec).state);
+
+interval:
+   - interval: 10s
+     then:
+        - lambda: |-
+            ESP_LOGI("info","Sun %s", id(sun).state.c_str());
+            ESP_LOGI("info","Weather %s", id(meteo).state.c_str());
+            ESP_LOGI("info","temp %.1f", id(ausec).state);
+
+
+text_sensor:
+
+  - platform: homeassistant
+    id: sun
+    entity_id: sun.sun
+    on_value:
+      then:
+         - lambda: |-
+             int offset = (id(sun).state == "below_horizon") ? 0 : -120;
+             lv_img_set_offset_y( id(background_image) , offset);
+             if (offset==0) {
+             lv_obj_set_style_bg_color(id(page4)->obj, lv_color_hex(0x808080), LV_PART_MAIN);     
+             lv_obj_set_style_text_color(id(condition), lv_color_hex(0xFFFF00), LV_PART_MAIN);
+
+             } else {
+             lv_obj_set_style_bg_color(id(page4)->obj, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+             lv_obj_set_style_text_color(id(condition), lv_color_hex(0x00), LV_PART_MAIN);
+             }
+         
+
+
+
+  - platform: homeassistant
+    id: meteo
+    entity_id: weather.forecast_maison
+    on_value:
+       - lvgl.image.update:
+           id: weather_condition_image
+           src: !lambda return id(weather_icon)[x];
+
+       - lvgl.label.update:
+           id: condition
+           text: !lambda |-
+              return id(meteo).state+str_sprintf("\n%.1f°C",id(ausec).state) ;
+
+ 
+  - platform: template
+    name: "Current Time"
+    id: current_time
+    update_interval: 1s
+    lambda: return  id(homeassistant_time).now().strftime("%H:%M:%S");
+    internal: true
+    on_value: 
+      then:
+        - lvgl.label.update: 
+            id: time_widget
+            text:
+              format: "%s"
+              args: [ 'id(current_time).state.c_str()']
+
+  - platform: template
+    name: "Current Date"
+    id: current_date
+    update_interval: 10s
+    internal: true
+    lambda: return  id(homeassistant_time).now().strftime("%d %B");
+    on_value: 
+      then:
+        - lvgl.label.update: 
+            id: date_widget
+            text:
+              format: "%s"
+              args: [ 'id(current_date).state.c_str()']
+  - platform: template
+    name: "Day of Week"
+    id: current_dow
+    update_interval: 10s
+    lambda: |
+       char buffer[16];
+       sprintf(buffer, "%.1f °C", id(ausec).state);
+       return (std::string) buffer;
+     
+    internal: true
+    on_value: 
+      then:
+        - lvgl.label.update: 
+            id: dow_widget
+            text:
+              format: "%s"
+              args: [ 'id(current_dow).state.c_str()']
+
+
+color:
+  - id: blue
+    hex: 0000FF  # or 1E90FF
+  - id: red
+    hex: FF0000
+  - id: green
+    hex: 88E788
+  - id: white
+    hex: FFFFFF
+  - id: black
+    hex: 110101
+
+
+
+# https://community.home-assistant.io/t/lvgl-using-a-date-stamp-as-a-label-at-compile-time/777605/4
+
+lvgl:
+  id: mainscreen
+  buffer_size: 25%
+  bg_color: 0
+  top_layer:
+  pages:
+    - id: time_page
+      widgets:
+        - meter:
+            id: clock_meter
+            align: center
+            width: 238
+            height: 238
+            bg_color: 0
+            border_color: 0
+            border_width: 2
+            text_color: white
+            scales:
+              - ticks:    # minutes
+                  color: white
+                  count: 60
+                  length: 3
+                range_from: 0
+                range_to: 60
+                angle_range: 360
+                rotation: 270
+                indicators:
+                  - line: # Second hand
+                        id: second_hand_indic
+                        width: 2
+                        color: red
+                        r_mod: -10 # Modify radius to adjust length
+                  - line: # Minute hand
+                      id: minute_hand_indic
+                      width: 3
+                      color: green
+                      r_mod: -1 # Closer to edge
+                  - line: # Hour hand
+                      id: hour_hand_indic
+                      width: 7
+                      color: blue
+                      r_mod: -40 # Shorter
+              - ticks:    # hours
+                  color: white
+                  width: 1
+                  count: 12
+                  length: 1
+                  major:
+                    color: white
+                    stride: 1
+                    length: 6
+                    label_gap: 15
+                range_from: 1
+                range_to: 12
+                angle_range: 330
+                rotation: 300
+#        - label:
+#            id: temp_widget
+#            align: CENTER
+#            y: -35
+#            text_color: white
+#            text: 
+#              format: "%.1f°"
+#              args: [ id(weather_temp).state ]
+#            on_short_click:
+#              then:
+#                - script.execute: screenoff
+        - label:
+            id: dow_widget
+            align: CENTER
+            x: -50
+            y: 0
+            text_color: white
+            border_color: red
+            border_width: 1
+            on_short_click:
+              then:
+                - script.execute: screenoff
+        - label:
+            id: date_widget
+            align: CENTER
+            y: 35
+            text_color: white
+            on_short_click:
+              then:
+                - script.execute: screenoff
+    - id: page2
+      widgets:
+        - meter:
+            id: digital_meter
+            align: center
+            width: 238
+            height: 238
+            bg_color: 0
+            border_color: 0
+            border_width: 2
+            text_color: white
+            scales:
+              - ticks:
+                  color: white
+                  count: 60
+                  length: 5
+                range_from: 0
+                range_to: 60
+                angle_range: 360
+                rotation: 270
+                indicators:
+                  - tick_style:
+                        start_value: 0
+                        end_value: 60
+                        color_start: red
+                        color_end: blue
+                        local: true
+                        width: 1 
+        - label:
+            id: time_widget
+            align: CENTER
+            y: -20 
+            text_color: red
+            text_font: roboto40
+            on_short_click:
+              then:
+                - script.execute: screenoff
+        - label:
+            id: temp_display
+            align: CENTER
+            y: 45
+            text_color: red
+            text_font: roboto28
+            on_short_click:
+              then:
+                - script.execute: screenoff
+
+    - id: page3
+      widgets:
+        - arc:
+            x: 0
+            y: 0
+            align: CENTER
+            height: 238
+            width: 238
+            id: second_hand_indic2
+            min_value: 0
+            max_value: 60
+            adjustable: false
+            start_angle: 0
+            end_angle: 360
+            rotation: 270
+            arc_width: 20
+            arc_color: 0
+            arc_rounded: true
+            indicator:
+               arc_color: 0xFA114F
+
+        - arc:
+            x: 0
+            y: 0
+            align: CENTER
+            height: 208
+            width: 208
+            id: minute_hand_indic2
+            value: 30
+            min_value: 0
+            max_value: 60
+            adjustable: false
+            start_angle: 0
+            end_angle: 360
+            rotation: 270
+            arc_width: 20
+            arc_color: 0
+            indicator:
+               arc_color: 0x8DE328
+
+        - arc:
+            x: 0
+            y: 0
+            align: CENTER
+            height: 178
+            width: 178
+            id: hour_hand_indic2
+            value: 3
+            min_value: 0
+            max_value: 60 
+            adjustable: false
+            start_angle: 0
+            end_angle: 360
+            rotation: 270
+            arc_width: 20
+            arc_color: 0
+            indicator:
+               arc_color: 0x1AB5FC
+                    
+        - label:
+            id: date2_widget
+            align: CENTER
+            text_color: white
+            text_font: roboto40
+            x: 10 
+            y: 10
+            width: 120
+            height: 100
+
+
+    - id: page4
+      bg_color: 0xFFFFFF
+      widgets:
+         - image:
+             id: background_image
+             src: background
+             x: 0
+             y: 120
+             width: 240
+             height: 120
+    
+         - image:
+             id: weather_condition_image
+             src:   day_sun_png
+             align: CENTER
+             x: -70
+             y: -10
+
+         - label:
+             id: condition
+             align: CENTER
+             text_color: 0x000000
+             text_font: roboto28
+             x: 20 
+             y: -20
+
+    - id: page5
+      widgets:
+          - switch:
+              align: CENTER
+              x: 0
+              y: -20
+              width: 120
+              id: btn_id
+              #text_font: mdi
+              #text: "\U000F1A52"
+              on_click:
+               - homeassistant.service:
+                   service: switch.toggle
+                   data:
+                      entity_id: switch.blanche
+       
+button:
+  - platform: restart
+    name: "Living Room Restart"
+
+
+binary_sensor:
+  - platform: homeassistant
+    id: blanche_state
+    entity_id: switch.blanche
+    publish_initial_state: true
+    on_state:
+      then:
+        - if:
+            condition:
+              binary_sensor.is_on: blanche_state
+            then:
+              - lvgl.widget.update:
+                  id: btn_id
+                  bg_color: 0xFFEA00
+                  # Add other style updates here
+            else:
+              - lvgl.widget.update:
+                  id: btn_id
+                  bg_color: blue
+
+mapping:
+   - id: weather_icon
+     from: string
+     to: image
+     entries:
+        rainy: day_rainy_png
+        cloudy: day_cloudy_png
+        partlycloudy: day_partial_png
+        sunny: day_sun_png
+        snowy-rainy: snow_rainy_png
+        snowy: snowy_png
+        clear-night: clear_night_png
+        fog: fog_png
+        hail: hail_png
+        lightning: lightning_png
+        lightning-rainy: lightning_png
+        windy: windy_png
+        pouring: day_sun_png
+
