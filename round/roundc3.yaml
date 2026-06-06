@@ -262,7 +262,7 @@ sensor:
          - lvgl.label.update:
              id: condition
              text: !lambda |-
-               return id(meteo).state+str_sprintf("\n%.1f°C",id(ausec).state) ;
+               return "t"+id(meteo).state+str_sprintf("\n%.1f°C",id(ausec).state) ;
 
          - lambda: |
                ESP_LOGI("Check sensor", "%.1f", id(ausec).state);
@@ -288,7 +288,7 @@ interval:
         - lambda: |-
             ESP_LOGI("info","Sun %s", id(sun).state.c_str());
             ESP_LOGI("info","Weather %s", id(meteo).state.c_str());
-            ESP_LOGI("info","temp %.1f", id(ausec).state);
+            ESP_LOGI("info","Temp %.1f", id(ausec).state);
 
 
 text_sensor:
